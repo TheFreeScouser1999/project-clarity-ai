@@ -1,7 +1,7 @@
 import streamlit as st
 from openai import OpenAI
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 SYSTEM_PROMPT = """
 You are an experienced senior project coordinator.
@@ -51,18 +51,15 @@ if st.button("Create Daily Brief"):
     else:
         with st.spinner("Thinking like a calm project coordinator..."):
             response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_input}
-    ],
-    temperature=0.2
-)
-
-output = response.choices[0].message.content
-st.markdown("---")
-st.markdown(output)
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_input}
+                ],
+                temperature=0.2
             )
 
-            st.markdown("---")
-            st.markdown(response.choices[0].message.content)
+        output = response.choices[0].message.content
+
+        st.markdown("---")
+        st.markdown(output)
