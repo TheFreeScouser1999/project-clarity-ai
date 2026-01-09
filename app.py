@@ -1,11 +1,19 @@
 import streamlit as st
 from openai import OpenAI
+from pathlib import Path
 
-st.write("API key loaded:", bool(st.secrets.get("OPENAI_API_KEY")))
+# -----------------------------
+# Config / Setup
+# -----------------------------
+st.set_page_config(page_title="Project Clarity AI", layout="wide")
 
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-SYSTEM_PROMPT = """You are an experienced senior project coordinator.
+# Simple file-based memory (Alpha)
+MEMORY_FILE = Path("yesterday.txt")
+
+SYSTEM_PROMPT = """
+You are an experienced senior project coordinator.
 
 Your role is to reduce daily work stress by providing calm,
 conservative, and meeting-safe judgement.
@@ -27,7 +35,7 @@ RULES
 - Do not escalate tone beyond what the input supports
 - Before stating uncertainty, check whether earlier statements already resolve it; do not express unresolved uncertainty if the input contains an explicit confirmation
 
-OUTPUT FORMAT  
+OUTPUT FORMAT
 Always structure the response exactly like this, in this order:
 
 MEETING-SAFE SUMMARY
@@ -60,33 +68,84 @@ CAN WAIT / DEFER
 
 ASSUMPTIONS MADE
 - Bullet list of assumptions due to missing or incomplete information
-"""
+""".strip()
 
-st.set_page_config(page_title="Project Clarity AI", layout="wide")
-
+# -----------------------------
+# UI
+# -----------------------------
 st.title("🧠 Project Clarity AI")
-st.caption("Paste your work chaos. Get a calm plan.")
+st.caption("Paste your work chaos. Get a calm, meeting-safe daily brief.")
 
-user_input = st.text_area(
-    "Paste emails, notes, messages, meeting minutes — anything:",
-    height=300
-)
+col1, col2 = st.columns([2, 1], gap="large")
 
-if st.button("Create Daily Brief"):
+with col2:
+    st.subheader("Memory (Alpha)")
+    if MEMORY_FILE.exists():
+        st.success("Yesterday memory: ON")
+        with st.expander("View yesterday.txt"):
+            st.text(MEMORY_FILE.read_text())
+    else:
+        st.info("Yesterday memory: OFF (no file yet)")
+
+    if st.button("Clear memory (delete yesterday.txt)"):
+        if MEMORY_FILE.exists():
+            MEMORY_FILE.unlink()
+        st.success("Memory cleared. Re-run will start fresh.")
+
+with col1:
+    user_input = st.text_area(
+        "Paste emails, meeting notes, messages, etc.",
+        height=320,
+        placeholder="Paste your latest updates here…"
+    )
+
+    create_btn = st.button("Create Daily Brief")
+
+# -----------------------------
+# Logic
+# -----------------------------
+if create_btn:
     if not user_input.strip():
         st.warning("Paste something first.")
     else:
+        yesterday_summary = ""
+        if MEMORY_FILE.exists():
+            yesterday_summary = MEMORY_FILE.read_text()
+
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+        ]
+
+        # Inject yesterday context for continuity (only if it exists)
+        if yesterday_summary.strip():
+            messages.append({
+                "role": "system",
+                "content": f"""
+CONTEXT FROM YESTERDAY (for continuity only):
+{yesterday_summary}
+
+Instructions:
+- Use this only to maintain consistency and reduce rework.
+- Do NOT repeat unchanged items.
+- Focus on updates, changes, newly surfaced risks, and what has progressed/resolved.
+- If something appears resolved today, reflect that.
+""".strip()
+            })
+
+        # Today's new input
+        messages.append({"role": "user", "content": user_input})
+
         with st.spinner("Thinking like a calm project coordinator..."):
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_input}
-                ],
-                temperature=0.2
+                messages=messages,
+                temperature=0.2,
             )
 
         output = response.choices[0].message.content
+
+        # Save today's output as tomorrow's memory
+        MEMORY_FILE.write_text(output)
 
         st.markdown("---")
         st.markdown(output)
