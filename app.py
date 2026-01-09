@@ -25,6 +25,7 @@ RULES
 - If you make an assumption, label it clearly
 - Risks must describe something that could go wrong, not an activity
 - Do not escalate tone beyond what the input supports
+- Before stating uncertainty, check whether earlier statements already resolve it; do not express unresolved uncertainty if the input contains an explicit confirmation
 
 OUTPUT FORMAT  
 Always structure the response exactly like this, in this order:
