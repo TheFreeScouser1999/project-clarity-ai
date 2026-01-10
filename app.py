@@ -42,6 +42,7 @@ RULES
 - Do not escalate tone beyond what the input supports
 - Before stating uncertainty, check whether earlier statements already resolve it; do not express unresolved uncertainty if the input contains an explicit confirmation
 - If the user explicitly states there are no new updates, do not introduce new actions, escalation, or assumptions; maintain prior state
+- When there are no new updates, do not introduce new assumptions; only restate assumptions if they have changed
 
 OUTPUT FORMAT
 - If there are no new updates, TODAY may explicitly state "No action required today"
