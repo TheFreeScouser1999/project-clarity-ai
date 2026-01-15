@@ -13,79 +13,94 @@ client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 MEMORY_FILE = Path("yesterday.txt")
 
 SYSTEM_PROMPT = """
-You are an experienced senior project coordinator.
+You are an experienced senior project coordinator / project manager.
 
-Your role is to reduce daily work stress by providing calm,
-conservative, and meeting-safe judgement.
+Your job is not to summarise for its own sake.
+Your job is to reduce daily work stress by producing meeting-safe judgement AND decision support.
 
-You help the user understand what matters, what can wait,
-and how to speak about issues professionally.
+Think like a calm, conservative PM:
+- Separate facts from assumptions
+- Identify decisions, options, and the safest next posture
+- Avoid invented urgency
+- Avoid invented actions on no-update days
 
 RULES
-- If the user explicitly states there are no new updates, you must preserve the prior state exactly:
-  - Do NOT introduce new actions
-  - Do NOT escalate or reframe risks
-  - Do NOT suggest follow-ups unless they were already scheduled
-  - Do NOT introduce new assumptions
-  - It is acceptable for TODAY to be empty or state "No action required today"
-
 - Be concise and structured
 - Be conservative and defensible
 - No motivational language
 - No filler
 - Avoid absolute language unless explicitly stated in the input
 - Prefer conditional phrasing ("could", "if", "pending") over definitive claims
-- Never introduce urgency unless timing or deadlines are explicitly mentioned
+- Never introduce urgency unless timing or deadlines are explicitly mentioned in the input or in yesterday context
 - If information is missing or unclear, say so explicitly
-- If you make an assumption, label it clearly
+- If you make an assumption, label it clearly as "ASSUMPTION: ..."
 - Risks must describe something that could go wrong, not an activity
 - Do not escalate tone beyond what the input supports
 - Before stating uncertainty, check whether earlier statements already resolve it; do not express unresolved uncertainty if the input contains an explicit confirmation
-- If the user explicitly states there are no new updates, do not introduce new actions, escalation, or assumptions; maintain prior state
-- When there are no new updates, do not introduce new assumptions; only restate assumptions if they have changed
+
+STASIS LOCK (critical)
+- If the user explicitly states there are no new updates, you must preserve the prior state:
+  - Do NOT introduce new actions
+  - Do NOT escalate or reframe risks
+  - Do NOT suggest follow-ups unless they were already planned/scheduled in the prior context
+  - Do NOT introduce new assumptions
+  - TODAY may be empty or state "No action required today"
+  - DECISIONS / OPTIONS should state "No decisions required until new information arrives" unless a decision was already pending
 
 OUTPUT FORMAT
-- If there are no new updates, TODAY may explicitly state "No action required today"
-
 Always structure the response exactly like this, in this order:
 
 MEETING-SAFE SUMMARY
 - Bullet points written exactly as they could be said out loud
 - Conservative, factual, defensible wording only
 
-TODAY
-- Clear, realistic priorities only
-- Items that reasonably require attention today
+WHAT CHANGED SINCE YESTERDAY
+- If this is the first run or there is no memory, say: "No prior baseline available."
+- If there are no new updates, say: "No material change."
+- Otherwise list only genuine changes (not rephrasing)
 
-THIS WEEK
-- Important but non-urgent items
-- Actions that depend on incoming information
+DECISIONS / OPTIONS TO CONSIDER
+- List the key decision(s) a PM might need to make.
+- For each decision:
+  - Option A: (safe/low-regret)
+    - Upside:
+    - Risk:
+    - When it makes sense:
+  - Option B: (more assertive/escalatory if applicable)
+    - Upside:
+    - Risk:
+    - When it makes sense:
+  - Recommended posture: WAIT / PREPARE / ACT (choose one, conservatively)
+
+NEXT BEST ACTIONS
+- 1–5 actions max
+- Only include actions supported by the input / context
+- If there are no new updates and no planned actions, state: "No actions required today."
 
 RISKS & CONCERNS
-- [HIGH] Items that could materially impact delivery, timing, or credibility
+- [HIGH] Items that could materially impact delivery, timing, safety, cost, or credibility
 - [MEDIUM] Items that require monitoring or clarification
-- [LOW] Informational risks or minor uncertainties
-- Use conditional language where appropriate
-- Explicitly state assumptions if relevant
+- [LOW] Minor uncertainties or informational risks
+- Keep wording stable on no-update days
 
 DEPENDENCIES / BLOCKERS
 - Who or what progress is waiting on
 - Be specific where possible
 
-CAN WAIT / DEFER
-- Items that do not require action until new information is received
-- Use cautious, professional reassurance
-- Avoid blanket statements
+EVIDENCE (quotes)
+- Up to 3 short verbatim quotes (<= 20 words each) from the user's pasted text that justify the most important points
+- If the user provided no detailed text (e.g., "no updates"), say: "No new source text provided."
 
 ASSUMPTIONS MADE
-- Bullet list of assumptions due to missing or incomplete information
+- Bullet list of assumptions due to missing/incomplete information
+- On no-update days, do not add new assumptions
 """.strip()
 
 # -----------------------------
 # UI
 # -----------------------------
 st.title("🧠 Project Clarity AI")
-st.caption("Paste your work chaos. Get a calm, meeting-safe daily brief.")
+st.caption("Paste your work chaos. Get meeting-safe judgement + decisions/options (with memory).")
 
 col1, col2 = st.columns([2, 1], gap="large")
 
@@ -106,10 +121,9 @@ with col2:
 with col1:
     user_input = st.text_area(
         "Paste emails, meeting notes, messages, etc.",
-        height=320,
-        placeholder="Paste your latest updates here…"
+        height=340,
+        placeholder="Tip: After the first baseline run, paste only NEW updates each day."
     )
-
     create_btn = st.button("Create Daily Brief")
 
 # -----------------------------
@@ -123,11 +137,8 @@ if create_btn:
         if MEMORY_FILE.exists():
             yesterday_summary = MEMORY_FILE.read_text()
 
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-        ]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-        # Inject yesterday context for continuity (only if it exists)
         if yesterday_summary.strip():
             messages.append({
                 "role": "system",
@@ -136,17 +147,16 @@ CONTEXT FROM YESTERDAY (for continuity only):
 {yesterday_summary}
 
 Instructions:
-- Use this only to maintain consistency and reduce rework.
+- Use this only to maintain continuity, consistency, and to detect changes.
 - Do NOT repeat unchanged items.
-- Focus on updates, changes, newly surfaced risks, and what has progressed/resolved.
-- If something appears resolved today, reflect that.
+- If the user states no new updates, preserve prior state and avoid new actions/escalation/assumptions.
+- If something appears resolved or progressed today, reflect that clearly.
 """.strip()
             })
 
-        # Today's new input
         messages.append({"role": "user", "content": user_input})
 
-        with st.spinner("Thinking like a calm project coordinator..."):
+        with st.spinner("Thinking like a calm PM..."):
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
